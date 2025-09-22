@@ -35,8 +35,8 @@ Tabla: TBL_RENT_SERV_ADIC_INST_2025
       csv_file = r"C:\Users\MateoBarretoMonteale\Desktop\altas septiembre.csv"
       
       host = "tdtvntg.claro.com.co"
-      user = "mateo.barreto"
-      password = "Colombia123*"
+      user = "usuario"
+      password = "Contraseña"
       table = "INNOVACION.TBL_RENT_SERV_ADIC_INST_2025"
       
       # -----------------------------
