@@ -1,0 +1,85 @@
+Nombre: Cargue de información altas Hogar (Oracle/Teradata) 
+
+Descripción: Cargue de información del mes actual de las altas de los productos de Rentabilización del segmento hogar de Oracle (HISTORICO.TBL_SERV_ADIC_INST_202509) a Teradata (INNOVACION.TBL_RENT_SERV_ADIC_INST_2025)
+
+Autor: Mateo Barreto Montealegre 
+Fecha: 22/09/2025
+
+-- Oracle
+BD Origen 
+Esquema: HISTORICO
+Tabla (Histórico) -   HISTORICO.TBL_SERV_ADIC_INST_2025
+Tabla (Mes Actual) -  HISTORICO.TBL_SERV_ADIC_INST_202509
+
+-- Teradata 
+BD Destino 
+Esquema: INNOVACION
+Tabla: TBL_RENT_SERV_ADIC_INST_2025
+
+
+-- Proceso 
+1. Eliminar los datos del mes actulal en la Base de Datos Destino (TBL_RENT_SERV_ADIC_INST_2025) 
+2. Descargar información de la tabla en Oracle del mes correspondiende TBL_SERV_ADIC_INST_202509
+3. Ejecutar proceso de cargue de información (Pyton): 
+
+-- Requerimientos
+  librerias: pandas, teradatasql
+
+-- Proceso 
+      import pandas as pd
+      import teradatasql
+      
+      # -----------------------------
+      # 1. Parámetros
+      # -----------------------------
+      csv_file = r"C:\Users\MateoBarretoMonteale\Desktop\altas septiembre.csv"
+      
+      host = "tdtvntg.claro.com.co"
+      user = "mateo.barreto"
+      password = "Colombia123*"
+      table = "INNOVACION.TBL_RENT_SERV_ADIC_INST_2025"
+      
+      # -----------------------------
+      # 2. Leer el CSV
+      # -----------------------------
+      df = pd.read_csv(csv_file, dtype=str, encoding="utf-8")
+      df = df.fillna("")  # reemplazar NaN por vacío
+      df = df.applymap(lambda x: x[:255] if isinstance(x, str) else x)
+      
+      expected_columns = [
+          "CUENTA","USUARIO","CODSERV","CAMPANA","CODTARIFA","SEGMENTO","PRODUCTO",
+          "IDE_ASESOR","NOMBRE_ASESOR","FECHA","DESCRIPCION","DESCP_2",
+          "CANAL","CANAL2","DIVISION","AREA","ZONA","D_DISTRITO",
+          "CEDULA_ESPECIALISTA","GV_ESPECIALISTA",
+          "CEDULA_JEFE_1_CANAL_REGIONAL","GV_JEFE_1_CANAL_REGIONAL"
+      ]
+      
+      df = df[expected_columns]
+      
+      # -----------------------------
+      # 3. Conectar y cargar en bloques
+      # -----------------------------
+      with teradatasql.connect(host=host, user=user, password=password) as con:
+          cur = con.cursor()
+      
+          batch_size = 5000
+          insert_sql = f"""
+          INSERT INTO {table} (
+              {",".join(expected_columns)}
+          ) VALUES (
+              {",".join(['?']*len(expected_columns))}
+          )
+          """
+      
+          for start in range(0, len(df), batch_size):
+              batch = df.iloc[start:start+batch_size].values.tolist()
+              try:
+                  cur.executemany(insert_sql, batch)
+                  print(f"✅ Insertado bloque {start} - {start+len(batch)}")
+              except Exception as e:
+                  print(f"❌ Error en bloque {start}-{start+len(batch)}: {e}")
+      
+      print("🎉 Carga finalizada (sin borrar la tabla antes).")
+
+    
+    
