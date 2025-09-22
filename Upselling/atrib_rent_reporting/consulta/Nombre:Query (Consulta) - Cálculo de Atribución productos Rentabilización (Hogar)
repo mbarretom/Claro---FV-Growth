@@ -1,0 +1,212 @@
+Nombre:Query (Consulta) - Cálculo de Atribución productos Rentabilización (Hogar) 
+
+Descripción: Cálculo de Atribución para productos de rentabilización  OTT's - Canales Premium - Asistencias - Transporte Inteligente - Cloud Gaming 
+
+Autor: Mateo Barreto Montealegre 
+Fecha: 22/09/2025
+
+ -- Hogar
+ 
+WITH PARMS AS   (SELECT  CURRENT_DATE AS TODAY  --TO_DATE('2025-10-01', 'YYYY-MM-DD') TODAY
+          ,(TODAY - EXTRACT(DAY FROM TODAY - 1)) AS MONTH_START
+          ,(TODAY - EXTRACT(DAY FROM TODAY - 1)-6) AS CAMPAIGN_START
+          ,TO_CHAR (TODAY, 'YYYYMM') MES
+       ),
+  ELIGIBLE_NEMO AS (SELECT  NEMOTECNIA
+          ,BASE_TYPE
+          ,BUSINESS_UNIT
+          ,PRODUCT
+          ,SUBPRODUCT
+          ,CAMPAIGN_NAME 
+          ,DATA_SOURCE
+          ,CHANNEL
+       FROM  INNOVACION.GROWTH_CAMPAIGN_OPTION 
+       WHERE  BUSINESS_UNIT = 'UPSELLING'
+       AND   PRODUCT IN ('t-resuelve') -- cambiar dependiendo del produto que se quiera evaluar (ott, canales premium, t-resuelve,transporte inteligente, gaming cloud)  
+       ),
+  TCM AS    (SELECT  UNIQUE A.FECHA AS SEND_AT,
+          A.DES_PLATAFORMA,
+          A.DESCRIPCION,
+          A.NEMOTECNIA,
+          E.SUBPRODUCT,
+          RIGHT(A.TELE_NUMB,10) AS TELE10
+       FROM  INNOVACION.VW_TBL_FACT_AUT_TCM A
+       JOIN  ELIGIBLE_NEMO E ON A.NEMOTECNIA = E.NEMOTECNIA
+       WHERE  A.BAN_AUTORIZACION_ENVIO = 'SI'
+       AND   A.FECHA >= (SELECT CAMPAIGN_START FROM PARMS)
+       AND   A.FECHA <  (SELECT TODAY FROM PARMS)
+       AND   A.TELE_NUMB IS NOT NULL
+       AND   TELE10 BETWEEN '3000000000' AND '3999999999'
+       ),
+  SF AS    (SELECT  A.SENT_AT AS SEND_AT,
+          'SALESFORCCE' AS DES_PLATAFORMA,
+          'INAPP' AS DESCRIPCION,
+          A.NEMOTECNIA,
+          E.SUBPRODUCT,
+          RIGHT(A.TELE_NUMB,10) AS TELE10
+       FROM  INNOVACION.SENT_CAMPAIGNS_LOG A
+       JOIN  ELIGIBLE_NEMO E
+       ON   A.NEMOTECNIA = E.NEMOTECNIA
+       WHERE  A.SENT_AT >= (SELECT CAMPAIGN_START FROM PARMS)
+       AND   A.SENT_AT  < (SELECT TODAY FROM PARMS)
+       AND   A.CONTROL_GROUP = 'N'
+       AND   A.TELE_NUMB IS NOT NULL
+       AND   A.NEMOTECNIA LIKE '%IP'
+       AND   RIGHT(A.TELE_NUMB,10) BETWEEN '3000000000' AND '3999999999'
+       ),
+  SE AS    (SELECT  A.SENT_AT AS SEND_AT,
+          'SALESFORCE' AS DES_PLATAFORMA,
+          'EMAIL' AS DESCRIPCION,
+          A.NEMOTECNIA,
+          E.SUBPRODUCT,
+          RIGHT(A.TELE_NUMB,10) AS TELE10
+       FROM  INNOVACION.SENT_CAMPAIGNS_LOG_EMAIL A
+       JOIN  ELIGIBLE_NEMO E
+       ON   A.NEMOTECNIA = E.NEMOTECNIA
+       WHERE  A.SENT_AT >= (SELECT CAMPAIGN_START FROM PARMS)
+       AND   A.SENT_AT  < (SELECT TODAY FROM PARMS)
+       AND   A.CONTROL_GROUP = 'N'
+       AND   A.TELE_NUMB IS NOT NULL
+       AND   RIGHT(A.TELE_NUMB,10) BETWEEN '3000000000' AND '3999999999'
+       ),
+  INAPP AS   (SELECT  TO_DATE('2025-09-01', 'YYYY-MM-DD') AS SEND_AT,
+          'SALESFORCE' AS DES_PLATAFORMA,
+          'INAPP' AS DESCRIPCION,
+          'C_REN_HOG_OTTDIBB_IP' AS NEMOTECNIA,
+          'OTT' AS SUBPRODUCT,
+          RIGHT(CAM_CELULAR_1__C,10) AS TELE10  
+       FROM  TBL_MOBILE_PUSH_ACTIVO A
+       JOIN  ELIGIBLE_NEMO E
+       ON   NEMOTECNIA = E.NEMOTECNIA
+       WHERE  CAM_TIPO_LINEA_CONTACTO_1__C = 'POSTPAGO'
+       ),
+  BASE AS    (SELECT  *
+       FROM  TCM
+       UNION
+       SELECT  *
+       FROM  SF
+       UNION
+       SELECT  *
+       FROM  SE
+       UNION
+       SELECT  *
+       FROM  INAPP
+       ),
+  BASE_MAS_CLIENTE AS (SELECT  B.SEND_AT,
+          B.DES_PLATAFORMA,
+          B.DESCRIPCION,
+          B.NEMOTECNIA,
+          C.IDENTIFICACION,
+          B.TELE10,
+          C.CUENTA
+       FROM  BASE B
+       LEFT JOIN (SELECT  DISTINCT RIGHT(TELEFONO_1,10) AS TELE10
+             ,NO_IDENTIFICACION IDENTIFICACION
+             ,CUENTA
+          FROM  INNOVACION.V_TBL_CLIEN_CONTRATOS_FIJA
+          WHERE  IDENTIFICACION IS NOT NULL
+          AND   TELE10 BETWEEN '3000000000' AND '3999999999'
+          UNION
+          SELECT  DISTINCT RIGHT(TELEFONO_2,10) AS TELE10
+             ,NO_IDENTIFICACION IDENTIFICACION
+             ,CUENTA
+          FROM  INNOVACION.V_TBL_CLIEN_CONTRATOS_FIJA
+          WHERE  IDENTIFICACION IS NOT NULL
+          AND   TELE10 BETWEEN '3000000000' AND '3999999999'
+          UNION
+          SELECT  DISTINCT RIGHT(TELEFONO_3,10) AS TELE10
+             ,NO_IDENTIFICACION IDENTIFICACION
+             ,CUENTA
+          FROM  INNOVACION.V_TBL_CLIEN_CONTRATOS_FIJA
+          WHERE  IDENTIFICACION IS NOT NULL
+          AND   TELE10 BETWEEN '3000000000' AND '3999999999'
+          ) C
+       ON   C.TELE10 = B.TELE10
+       )
+       --SELECT count (*), count (unique TELE10), count (unique cuenta), count (unique identificacion)FROM BASE_MAS_CLIENTE
+       ,
+  ALTAS_MOVIL AS  (SELECT  A.*,
+          B.HOMOLOGADO
+       FROM  (SELECT  *
+          FROM  INNOVACION.TBL_RENT_SERV_ADIC_INST_2025
+          WHERE  1 = 1
+          AND   FECHA >= (SELECT MONTH_START FROM PARMS)
+          AND   FECHA < (SELECT TODAY FROM PARMS)
+          ) A
+       JOIN  (SELECT  *
+          FROM  TBL4_MAESTRO_RENT_HOGAR
+          WHERE  1 = 1
+          AND   TIPO = 'asistencias' -- Cambiar según el producto que se vaya a evaluar (ott,canales,asistencias,vehiculo conectado,gaming)
+          ) B
+       ON   A.CODSERV = B.CODIGOS
+       ),
+  ENRIQUECIDO AS  (SELECT  BMC.SEND_AT,
+          AM.FECHA AS FEC_ACTIVACION,
+          M.BUSINESS_UNIT,
+          M.PRODUCT,
+          M.SUBPRODUCT,
+          M.CAMPAIGN_NAME,           
+          M.DATA_SOURCE,
+          BMC.DES_PLATAFORMA,
+          BMC.DESCRIPCION,
+          BMC.NEMOTECNIA,
+          BMC.IDENTIFICACION,
+          BMC.TELE10 AS TELE_NUMB,
+          BMC.CUENTA CUENTA,
+          TRUNC(FEC_ACTIVACION) - TRUNC(BMC.SEND_AT) AS DIAS,
+          'N' AS CONTROL_GROUP,
+          'OTT' AS TIPO_CONVERGENCIA,
+          ''COD_PLAN,
+          ''VAL_RENTA,
+          AM.HOMOLOGADO
+       FROM  BASE_MAS_CLIENTE BMC
+       JOIN  ELIGIBLE_NEMO M
+       ON   BMC.NEMOTECNIA = M.NEMOTECNIA
+       JOIN  ALTAS_MOVIL AM
+       --ON  BMC.IDENTIFICACION = AM.IDENTIFICACION
+       ON   BMC.CUENTA = TO_CHAR (AM.CUENTA)
+       WHERE  (TRUNC(FEC_ACTIVACION) - TRUNC(BMC.SEND_AT)) >= ${MIN_DIAS}
+       AND   (TRUNC(FEC_ACTIVACION) - TRUNC(BMC.SEND_AT)) <= ${MAX_DIAS}
+       ),
+  DEDUP AS   (SELECT  CAST(SEND_AT AS DATE) AS SEND_AT_D,
+          FEC_ACTIVACION,
+          BUSINESS_UNIT,
+          PRODUCT,
+          HOMOLOGADO AS SUBPRODUCT,
+          CAMPAIGN_NAME,
+          DATA_SOURCE,
+          DES_PLATAFORMA,
+          DESCRIPCION,
+          NEMOTECNIA,
+          IDENTIFICACION,
+          TELE_NUMB,
+          CUENTA,
+          DIAS,
+          CONTROL_GROUP,
+          TIPO_CONVERGENCIA,
+          VAL_RENTA
+       FROM  ENRIQUECIDO
+       QUALIFY ROW_NUMBER() OVER (PARTITION BY CUENTA, HOMOLOGADO ORDER BY COALESCE(DIAS, 999)) = 1
+       )
+SELECT  --SEND_AT_D AS SEND_AT,
+   --FEC_ACTIVACION,
+   --BUSINESS_UNIT,
+   --PRODUCT,
+   SUBPRODUCT,
+   --CAMPAIGN_NAME,
+   --DATA_SOURCE,
+   --DES_PLATAFORMA,
+   --DESCRIPCION,
+   --NEMOTECNIA,
+   --IDENTIFICACION,
+   --TELE_NUMB,
+   --CUENTA,
+   --DIAS,
+   --CONTROL_GROUP,
+   --TIPO_CONVERGENCIA,
+   COUNT(UNIQUE TELE_NUMB) AS ID_WITH_PURCHASES,
+   COUNT(CUENTA) AS PURCHASES,
+   SUM(VAL_RENTA) AS TOTAL_AMOUNT_COLLECTED
+FROM  DEDUP
+GROUP BY 1--, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,16
+;
