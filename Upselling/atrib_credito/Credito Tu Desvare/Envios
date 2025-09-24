@@ -1,0 +1,56 @@
+Nombre: Query - Consulta: Envíos Crédito Tu De$vare 
+
+Autor: Mateo Barreto Montealegre
+
+Fecha: 24/09/2025
+
+WITH datos_con_ranking AS (
+    SELECT 
+        A.FECHA,
+        A.TELE_NUMB,
+        B.SUBPRODUCT,
+        B.PRODUCT, 
+        B.CHANNEL,
+        B.SEGMENT,
+        B.MESSAGE_TYPE,
+        B.CAMPAIGN_NAME,
+        C.MESSAGE,
+        ROW_NUMBER() OVER (
+            PARTITION BY 
+                A.TELE_NUMB,
+                YEAR(CAST(A.FECHA AS DATE)),
+                MONTH(CAST(A.FECHA AS DATE))
+            ORDER BY 
+                CAST(A.FECHA AS DATE) ASC,
+                A.NEMOTECNIA ASC  -- En caso de empate en fecha
+        ) AS rn_primer_toque_mes
+    FROM VW_TBL_FACT_AUT_TCM A
+    JOIN GROWTH_CAMPAIGN_OPTION B 
+        ON A.NEMOTECNIA = B.NEMOTECNIA 
+    JOIN GROWTH_CAMPAIGN_ASSETS C 
+        ON A.NEMOTECNIA = C.NEMOTECNIA 
+    WHERE B.PRODUCT = 'CREDITO DESVARE'
+      AND CAST(A.FECHA AS DATE FORMAT 'YYYY-MM-DD') >= DATE '2025-09-01'
+)
+SELECT   
+    CAST(FECHA AS DATE FORMAT 'YYYY-MM-DD') AS FECHA,
+    PRODUCT AS PRODUCTO, 
+    SUBPRODUCT AS SUBPRODUCTO,
+    CHANNEL AS CANAL,
+    SEGMENT AS SEGMENTO,
+    MESSAGE_TYPE AS TIPO_NOTIFICACION,
+    CAMPAIGN_NAME AS CAMPANIA,
+    MESSAGE AS MENSAJE,
+    COUNT(TELE_NUMB) AS ENVIOS,
+    SUM(CASE WHEN rn_primer_toque_mes = 1 THEN 1 ELSE 0 END) AS PRIMER_TOQUE
+FROM datos_con_ranking
+GROUP BY 
+    FECHA,
+    PRODUCT, 
+    SUBPRODUCT,
+    CHANNEL,
+    SEGMENT,
+    MESSAGE_TYPE,
+    CAMPAIGN_NAME,
+    MESSAGE
+ORDER BY FECHA;
