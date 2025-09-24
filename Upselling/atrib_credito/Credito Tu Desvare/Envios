@@ -6,7 +6,7 @@ Fecha: 24/09/2025
 
 WITH datos_con_ranking AS (
     SELECT 
-        A.FECHA,
+        trunc(A.FECHA),
         A.TELE_NUMB,
         B.SUBPRODUCT,
         B.PRODUCT, 
@@ -18,10 +18,10 @@ WITH datos_con_ranking AS (
         ROW_NUMBER() OVER (
             PARTITION BY 
                 A.TELE_NUMB,
-                YEAR(CAST(A.FECHA AS DATE)),
-                MONTH(CAST(A.FECHA AS DATE))
+                YEAR(CAST(trunc(A.FECHA) AS DATE)),
+                MONTH(CAST(trunc(A.FECHA) AS DATE))
             ORDER BY 
-                CAST(A.FECHA AS DATE) ASC,
+                CAST(trunc(A.FECHA) AS DATE) ASC,
                 A.NEMOTECNIA ASC  -- En caso de empate en fecha
         ) AS rn_primer_toque_mes
     FROM VW_TBL_FACT_AUT_TCM A
