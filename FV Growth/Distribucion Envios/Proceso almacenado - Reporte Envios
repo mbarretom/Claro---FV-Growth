@@ -6,39 +6,52 @@ DROP TABLE INNOVACION.TBL_TOTAL_ENVIOS;
 DROP TABLE INNOVACION.TBL_PRIMER_TOQUE;
 
 
--- ==========================================
--- 📊 PASO 2: CREAR TABLA - ENVÍOS TOTALES
--- ==========================================
 
-CREATE TABLE INNOVACION.TBL_TOTAL_ENVIOS AS (
+-- ==========================================
+-- 🗑️ PASO 2: TOTAL DE ENVIOS
+-- ==========================================
+CREATE MULTISET TABLE INNOVACION.TBL_TOTAL_ENVIOS AS
+(
     SELECT
-        TRUNC(T.FECHA) AS FECHA_ENVIO,
-        O.MESSAGE_TYPE,
-        O.BUSINESS_UNIT,
-        O.CHANNEL,
-        O.SEGMENT,
-        O.PRODUCT,
-        O.SUBPRODUCT,
-        O.NEMOTECNIA,
-        COUNT(DISTINCT TRUNC(T.FECHA) || O.NEMOTECNIA || T.TELE_NUMB) AS ENVIOS_TOTALES,
-        COUNT(DISTINCT T.TELE_NUMB) AS USUARIOS_UNICOS
-    FROM INNOVACION.VW_TBL_FACT_AUT_TCM T
-    INNER JOIN INNOVACION.GROWTH_CAMPAIGN_OPTION O
-        ON T.NEMOTECNIA = O.NEMOTECNIA
-    WHERE T.BAN_AUTORIZACION_ENVIO = 'SI'
-        AND TRUNC(T.FECHA) BETWEEN ADD_MONTHS(TRUNC(CURRENT_DATE, 'MM'), -1)
-                               AND (ADD_MONTHS(TRUNC(CURRENT_DATE, 'MM'), 1) - INTERVAL '1' DAY)
-    GROUP BY 
-        TRUNC(T.FECHA),
-        O.MESSAGE_TYPE,
-        O.BUSINESS_UNIT,
-        O.CHANNEL,
-        O.SEGMENT,
-        O.PRODUCT,
-        O.SUBPRODUCT,
-        O.NEMOTECNIA
+        FECHA_ENVIO,
+        MESSAGE_TYPE,
+        BUSINESS_UNIT,
+        CHANNEL,
+        SEGMENT,
+        PRODUCT,
+        SUBPRODUCT,
+        NEMOTECNIA,
+        COUNT(*) AS ENVIOS_TOTALES,
+        COUNT(DISTINCT TELE_NUMB) AS USUARIOS_UNICOS
+    FROM
+    (
+        /* 1️⃣ Filtramos y deduplicamos desde el inicio */
+        SELECT
+            CAST(T.FECHA AS DATE) AS FECHA_ENVIO,
+            O.MESSAGE_TYPE,
+            O.BUSINESS_UNIT,
+            O.CHANNEL,
+            O.SEGMENT,
+            O.PRODUCT,
+            O.SUBPRODUCT,
+            O.NEMOTECNIA,
+            T.TELE_NUMB
+        FROM INNOVACION.VW_TBL_FACT_AUT_TCM T
+        INNER JOIN INNOVACION.GROWTH_CAMPAIGN_OPTION O
+            ON T.NEMOTECNIA = O.NEMOTECNIA
+        WHERE T.BAN_AUTORIZACION_ENVIO = 'SI'
+          AND T.FECHA >= ADD_MONTHS(TRUNC(CURRENT_DATE, 'MM'), -1)
+          AND T.FECHA <  ADD_MONTHS(TRUNC(CURRENT_DATE, 'MM'), 1)
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY T.TELE_NUMB, O.NEMOTECNIA, CAST(T.FECHA AS DATE)
+            ORDER BY T.FECHA DESC
+        ) = 1
+    ) SRC
+    GROUP BY
+        FECHA_ENVIO, MESSAGE_TYPE, BUSINESS_UNIT, CHANNEL, SEGMENT, PRODUCT, SUBPRODUCT, NEMOTECNIA
 ) WITH DATA
 PRIMARY INDEX (NEMOTECNIA);
+
 
 
 -- ==========================================
